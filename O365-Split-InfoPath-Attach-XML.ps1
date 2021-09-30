@@ -9,16 +9,20 @@
 	File Name:  O365-Split-InfoPath-Attach-XML.ps1
 	Author   :  Jeff Jones  - @spjeff
 
-	Version  :  1.0.1
-	Modified :  2020-04-28
+	Version  :  1.0.2
+	Modified :  2021-09-30
+
+    # from https://stackoverflow.com/questions/58253022/running-a-self-decrypting-base64-powershelll-script-locally-with-powershell-fil?rq=1
+    # from https://stackoverflow.com/questions/22546316/decode-base64-string-in-powershell
+    # from http://johnliu.net/blog/2018/10/decode-infopath-attachments-with-a-bit-of-js-azurefunctions
 #>
 
 # Module
 Import-Module "SharePointPnPPowerShellOnline" -ErrorAction SilentlyContinue | Out-Null
 
 # Config
-$webURL                     = "https://spjeff.sharepoint.com/sites/Team"
-$sourceFormLibrary          = "/sites/team/AttachmentTest"
+$webURL = "https://spjeff.sharepoint.com/sites/Team"
+$sourceFormLibrary = "/sites/team/AttachmentTest"
 $destinationDocumentLibrary = "Shared Documents"
 
 # Functions
@@ -47,7 +51,7 @@ function ParseSingleXML($xmlFileName, $attachBase64) {
     # Set text encoding
     $encoding = [System.Text.Encoding]::Unicode;
     $convert = [Convert]::FromBase64String($attachBase64)
-    $ms = New-Object System.IO.MemoryStream(,$convert)
+    $ms = New-Object System.IO.MemoryStream(, $convert)
     $theReader = New-Object System.IO.BinaryReader($ms)
     
     # Parse file attachment name
@@ -55,18 +59,33 @@ function ParseSingleXML($xmlFileName, $attachBase64) {
     [Int]$fileSize = $theReader.ReadUInt32();
     [Int]$attachmentNameLength = $theReader.ReadUInt32() * 2;
     [System.Byte[]] $fileNameBytes = $theReader.ReadBytes($attachmentNameLength);
-    [string]$fileName = $encoding.GetString($fileNameBytes, 0, $attachmentNameLength-2);
+    [string]$fileName = $encoding.GetString($fileNameBytes, 0, $attachmentNameLength - 2);
     
     # Write file content
     Write-Host "ATTACH $fileName" -Fore "Yellow"
 
     # Make folder
-    $xmlFileName = $xmlFileName.Replace(".xml","_xml")
+    $xmlFileName = $xmlFileName.Replace(".xml", "_xml")
     mkdir $xmlFileName -ErrorAction SilentlyContinue | Out-Null
     
     # Write file
     $destFile = "$xmlFileName\$fileName"
     [IO.File]::WriteAllBytes($destFile, [Convert]::FromBase64String($attachBase64))
+
+    # Write file
+    if ($destFile.ToUpper() -notlike '*PDF') {
+        # Offset used for DOC and XLS
+        $offset = 24
+        $size = $convert.Length - $attachmentNameLength - $offset
+        $body = [System.Byte[]]::New($size);
+        [System.Array]::Copy($convert, $attachmentNameLength + $offset, $body, 0, $body.Length - $attachmentNameLength - $offset);
+        [IO.File]::WriteAllBytes("c:\code\$folder\$fileName", $body)
+    }
+    else {
+        # PDF
+        [IO.File]::WriteAllBytes("c:\code\$folder\$fileName", $convert)
+    }
+
 }
 function UploadInfoPath() {
     # Enumerate source attachments
